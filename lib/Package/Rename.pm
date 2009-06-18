@@ -1,36 +1,43 @@
 package Package::Rename;
 
 use strict;
-no strict 'refs';
 use warnings;
 use Carp;
-
+use MRO::Compat;
 use base 'Exporter';
-use vars qw/@EXPORT_OK/;
-@EXPORT_OK = qw/copy_package remove_package rename_package/;
+our @EXPORT_OK = qw/copy_package remove_package rename_package link_package/;
 
-our $VERSION = '0.01';
-
-*_method_changed = $] >= 5.009 ? \&mro::method_changed_in : sub { };
+our $VERSION = '0.02';
 
 sub copy_package {
 	my ($old_name, $new_name) = @_;
+	no strict 'refs';
 	%{"$new_name\::"} = %{"$old_name\::"};
+	mro::method_changed_in($new_name);
 	return;
 }
 
 sub remove_package {
-	my ($old_name) = @_;
-	_method_changed($old_name);
-	undef %{"$old_name\::"};
+	my $name = shift;
+	my ($super, $sub) = $name =~ / ^ ( \w+ (?> ::\w+ )* ) :: (\w+) $/xs ? ($1, $2) : ('main', $name);
+	no strict 'refs';
+	undef ${"$super\::"}{"$sub\::"};
+	mro::method_changed_in($name);
+	return;
+}
+
+sub link_package {
+	my ($old_name, $new_name) = @_;
+	no strict 'refs';
+	*{"$new_name\::"} = *{"$old_name\::"};
+	mro::method_changed_in($new_name);
 	return;
 }
 
 sub rename_package {
 	my ($old_name, $new_name) = @_;
-	copy_package($old_name, $new_name);
+	link_package($old_name, $new_name);
 	remove_package($old_name);
-	_method_changed($new_name);
 	return;
 }
 
@@ -44,7 +51,7 @@ Package::Rename - Rename or copy package
 
 =head1 VERSION
 
-Version 0.01
+Version 0.02
 
 =head1 SYNOPSIS
 
@@ -54,17 +61,21 @@ This module allows you to rename, copy or even remove packages from the perl nam
 
 This module defines the following functions. They are all optionally exported.
 
-=head2 rename_package
+=head2 rename_package($old_name, $new_name)
 
-Give a package a different name.
+Give a package a different name. This is the equivalent of first linking a package, and then removing its original name.
 
-=head2 copy_package
+=head2 link_package($old_name, $new_name)
 
-Give a package a new name (alias)
+Make a 'hard link' of a package, thus giving it a second name.
 
-=head2 remove_package
+=head2 remove_package($name)
 
-Remove a package from the namespace. You probably don't want to use this unless you really know what you're doing.
+Remove a package from the namespace. You probably don't want to use this yourself unless you really know what you're doing.
+
+=head2 copy_package($old_name, $new_name)
+
+Copy the complete contents of a package.
 
 =head1 AUTHOR
 
